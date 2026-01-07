@@ -387,7 +387,8 @@ class App {
 
                     this.addHistory({
                         date: new Date().toLocaleString(),
-                        content: text,
+                        content: text, // 表示用にコピー時のテキストも保存
+                        rawItems: JSON.parse(JSON.stringify(this.currentRawItems)), // 元データを完全保存
                         title: currentTitle,
                         rights: currentRights
                     });
@@ -581,12 +582,47 @@ class App {
             // クリックで復元
             div.addEventListener('click', () => {
                 document.getElementById('result-area').classList.remove('hidden');
-                document.getElementById('output-text').value = item.content;
+                const outText = document.getElementById('output-text');
                 
-                // タイトル等も復元（現在ファイル情報とは乖離するが、何を見ていたかわかるように）
+                // タイトル等も復元
                 document.getElementById('file-info-area').classList.remove('hidden');
                 document.getElementById('file-title').textContent = titleStr;
                 document.getElementById('file-rights').textContent = rightsStr;
+
+                if (item.rawItems) {
+                    // 全データ復元モード (新しい履歴データ)
+                    this.currentRawItems = item.rawItems;
+                    this.currentShortItems = this.calculateShortItems(this.currentRawItems);
+                    // 初期状態(全選択)に戻すかどうかは仕様次第だが、元データからの再編集という観点では全選択が自然
+                    this.checkedKeys = new Set(Object.keys(VN3_ITEMS));
+                    
+                    // UIの完全復元
+                    this.renderResultItems();
+                    this.updateOutput();
+                    
+                    // テキストエリアは通常表示に戻す（編集できないモード解除）
+                    outText.className = "hidden"; // renderResultItems内でhidden制御されるが念のため
+                    document.getElementById('result-meta').textContent = titleStr; // Stickyヘッダーの更新
+
+                } else {
+                    // テキストのみ復元モード (古い履歴データ)
+                    outText.value = item.content;
+                    
+                    // テキストエリアを表示・整形
+                    outText.classList.remove('hidden');
+                    outText.className = "w-full mt-2 p-2 border border-blue-100 rounded bg-white text-sm font-mono h-64 focus:ring-2 focus:ring-blue-300 focus:outline-none";
+                    
+                    // 個別項目は見えなくする
+                    document.getElementById('items-list').innerHTML = `
+                        <div class="p-8 text-center text-gray-400">
+                            <p>履歴からテキストのみを読み込みました。</p>
+                            <p class="text-xs mt-2">※ 元の解析データは保存されていないため、個別項目の再編集はできません。</p>
+                        </div>
+                    `;
+                }
+
+                // スクロール
+                document.getElementById('result-area').scrollIntoView({ behavior: 'smooth' });
             });
             list.appendChild(div);
         });
