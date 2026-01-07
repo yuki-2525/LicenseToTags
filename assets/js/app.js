@@ -83,29 +83,31 @@ class App {
             // マッピングルール検索
             const group = VN3_ITEMS[key].group;
             let shortText = null;
-            
-            // グループ固有
-            if (this.config.mappings[group]) {
-                shortText = this.findMatch(text, this.config.mappings[group]);
-            }
-            // 共通
-            if (!shortText && this.config.mappings['common']) {
-                shortText = this.findMatch(text, this.config.mappings['common']);
-            }
-            // フォールバック
-            if (!shortText) {
-                // 特記事項(X)の特別処理: 「なし」以外なら「あり 要確認」とする
-                if (key === 'X') {
-                    // ノイズ除去: "特記事項" の文言が先頭に含まれていたら削除
-                    let cleanXText = text.replace(/^特記事項[:：\s]*/, '').trim();
-                    
-                    const nonePatterns = ['なし', '特になし', '無し', 'なし。', '特になし。'];
-                    if (!nonePatterns.includes(cleanXText)) {
-                        shortText = 'あり 要確認';
-                    } else {
-                        shortText = cleanXText; // "なし"
-                    }
+
+            // 特記事項(X)はマッピング設定を行わず、固定ロジックで判定
+            if (key === 'X') {
+                // ノイズ除去: "特記事項" の文言が先頭に含まれていたら削除
+                let cleanXText = text.replace(/^特記事項[:：\s]*/, '').trim();
+                
+                const nonePatterns = ['なし', '特になし', '無し', 'なし。', '特になし。'];
+                if (!nonePatterns.includes(cleanXText)) {
+                    shortText = 'あり 要確認';
                 } else {
+                    shortText = 'なし';
+                }
+            } else {
+                // 通常項目: マッピングルール検索
+                
+                // グループ固有
+                if (this.config.mappings[group]) {
+                    shortText = this.findMatch(text, this.config.mappings[group]);
+                }
+                // 共通
+                if (!shortText && this.config.mappings['common']) {
+                    shortText = this.findMatch(text, this.config.mappings['common']);
+                }
+                // フォールバック
+                if (!shortText) {
                     shortText = text.length > 20 ? text.substring(0, 20) + '...' : text;
                 }
             }
