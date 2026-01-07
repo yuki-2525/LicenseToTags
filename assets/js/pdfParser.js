@@ -108,10 +108,20 @@ class PdfParser {
             const trimmedLine = line.trim();
             if (!trimmedLine) continue;
 
-            // 「利用規約」セクション（共通部分）が始まったら解析終了
-            // 例: "3. 利用規約", "利用規約" などのヘッダーを検出
-            if (/^(\d+[\.．]?\s*)?利用規約$/.test(trimmedLine)) {
-                break;
+            // 特記事項(X)収集中は、特定の終了フレーズ（4. 権利者...）が来るまで読み続ける
+            if (currentKey === 'X') {
+                if (/^(\d+[\.．]?\s*)?権利者および権利者への問い合わせ先/.test(trimmedLine)) {
+                     this.items[currentKey] = this.cleanText(currentBuffer.join(' '));
+                     currentKey = null;
+                     currentBuffer = [];
+                     break; // 解析終了
+                }
+            } else {
+                // 通常時：「利用規約」セクション（共通部分）が始まったら解析終了
+                // 例: "3. 利用規約", "利用規約" などのヘッダーを検出
+                if (/^(\d+[\.．]?\s*)?利用規約$/.test(trimmedLine)) {
+                    break;
+                }
             }
 
             // 新しい項目の開始判定
@@ -149,7 +159,8 @@ class PdfParser {
                     continue;
                 }
 
-                if (sectionPattern.test(trimmedLine)) {
+                // Xの場合はセクション区切りパターンを無視する
+                if (currentKey !== 'X' && sectionPattern.test(trimmedLine)) {
                     // 区切りが来たら収集終了
                     this.items[currentKey] = this.cleanText(currentBuffer.join(' '));
                     currentKey = null;
