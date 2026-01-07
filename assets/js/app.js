@@ -304,14 +304,33 @@ class App {
         dropZone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', (e) => this.handleFile(e.target.files[0]));
         
-        dropZone.addEventListener('dragover', (e) => {
+        // 全画面でドラッグ＆ドロップを受け付けるように変更
+        let dragCounter = 0;
+
+        window.addEventListener('dragenter', (e) => {
             e.preventDefault();
+            dragCounter++;
+            // ドロップゾーンをハイライト
             dropZone.classList.add('drag-active');
         });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
-        dropZone.addEventListener('drop', (e) => {
+
+        window.addEventListener('dragleave', (e) => {
             e.preventDefault();
+            dragCounter--;
+            if (dragCounter === 0) {
+                dropZone.classList.remove('drag-active');
+            }
+        });
+
+        window.addEventListener('dragover', (e) => {
+            e.preventDefault(); // ドロップ許可のために必須
+        });
+
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragCounter = 0;
             dropZone.classList.remove('drag-active');
+            
             if (e.dataTransfer.files.length) {
                 this.handleFile(e.dataTransfer.files[0]);
             }
@@ -510,41 +529,66 @@ class App {
             debug('Using URL as is:', targetUrl);
         }
 
-        // CORS回避のためプロキシ経由 (corsproxy.ioを使用)
-        // 注意: 外部サービス依存のため、永続性が必要な場合は自前プロキシを推奨
-        // const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-        debug('Proxy URL:', proxyUrl);
+        // CORS回避のためのプロキシ設定
+        // 複数のプロキシを用いてフォールバックを行う
+        const proxies = [
+            { name: 'corsproxy.io', func: (u) => `https://corsproxy.io/?${encodeURIComponent(u)}` },
+            { name: 'allorigins.win', func: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` }
+        ];
+
+        document.getElementById('fetch-url-btn').textContent = '取得中...';
+        document.getElementById('fetch-url-btn').disabled = true;
+
+        let lastError = null;
+        let fetchedBlob = null;
 
         try {
-            document.getElementById('fetch-url-btn').textContent = '取得中...';
-            document.getElementById('fetch-url-btn').disabled = true;
+            for (const proxy of proxies) {
+                try {
+                    const proxyUrl = proxy.func(targetUrl);
+                    debug(`Trying Proxy (${proxy.name}):`, proxyUrl);
 
-            const response = await fetch(proxyUrl);
-            debug('Response Status:', response.status);
-            if (this.debugMode) console.log('Response Headers:', [...response.headers.entries()]);
+                    const response = await fetch(proxyUrl);
+                    debug('Response Status:', response.status);
+                    if (this.debugMode) console.log('Response Headers:', [...response.headers.entries()]);
 
-            if (!response.ok) throw new Error(`ファイルの取得に失敗しました。Status: ${response.status}`);
-            
-            const blob = await response.blob();
-            debug('Fetched Blob:', blob);
-            debug('Blob Type:', blob.type);
-            debug('Blob Size:', blob.size);
+                    if (!response.ok) {
+                        // 403 Forbiddenなどの場合、次のプロキシを試すために例外を投げる
+                        throw new Error(`Status: ${response.status}`);
+                    }
+                    
+                    const blob = await response.blob();
+                    
+                    // Google Drive等の場合、エラー画面(HTML)が200 OKで返ってくることがあるためチェック
+                    if (blob.type.includes('text/html')) {
+                        const textPreview = await blob.text();
+                        if (this.debugMode) console.warn('Response was HTML. Preview:', textPreview.substring(0, 200));
+                        throw new Error('返却内容がHTMLです（アクセス権限不足やウイルススキャン警告の可能性があります）');
+                    }
 
-            // Google Driveの場合、HTMLが返ってくることがある（アクセス権限なしなど）
-            if (blob.type.includes('text/html')) {
-                const textPreview = await blob.text(); // for debug preview
-                if (this.debugMode) console.warn('Response was HTML. Preview:', textPreview.substring(0, 200));
-                // バイナリとして扱い直すのは難しいのでエラーにする
-                throw new Error('PDFとして読み込めませんでした。Google Driveのアクセス権限（リンクを知っている全員）を確認してください。');
+                    debug('Fetched Blob:', blob);
+                    debug('Blob Type:', blob.type);
+                    debug('Blob Size:', blob.size);
+
+                    fetchedBlob = blob;
+                    break; // 成功したのでループ終了
+                } catch (e) {
+                    console.warn(`Proxy ${proxy.name} failed:`, e);
+                    lastError = e;
+                    // 次のプロキシへ
+                }
             }
 
-            const file = new File([blob], "downloaded.pdf", { type: "application/pdf" });
+            if (!fetchedBlob) {
+                throw lastError || new Error('全てのプロキシでの取得に失敗しました。');
+            }
+
+            const file = new File([fetchedBlob], "downloaded.pdf", { type: "application/pdf" });
             this.handleFile(file);
 
         } catch (error) {
             debugError('Fetch Error Detail:', error);
-            alert(`URLからの読み込みエラー: ${error.message}`);
+            alert(`URLからの読み込みに失敗しました。\n詳細: ${error.message}\n\n手動でPDFをダウンロードしてから画面にドロップしてください。`);
         } finally {
             document.getElementById('fetch-url-btn').textContent = '取得';
             document.getElementById('fetch-url-btn').disabled = false;
@@ -565,8 +609,7 @@ class App {
             const div = document.createElement('div');
             div.className = 'p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition cursor-pointer text-xs';
             
-            // 旧データ互換: metaがある場合はそれを使い、なければtitle/rightsを使う
-            const titleStr = item.title || item.meta || '利用規約';
+            const titleStr = item.title || '利用規約';
             const rightsStr = item.rights || '';
 
             div.innerHTML = `
@@ -581,6 +624,8 @@ class App {
             `;
             // クリックで復元
             div.addEventListener('click', () => {
+                if (!item.rawItems) return;
+
                 document.getElementById('result-area').classList.remove('hidden');
                 const outText = document.getElementById('output-text');
                 
@@ -589,37 +634,19 @@ class App {
                 document.getElementById('file-title').textContent = titleStr;
                 document.getElementById('file-rights').textContent = rightsStr;
 
-                if (item.rawItems) {
-                    // 全データ復元モード (新しい履歴データ)
-                    this.currentRawItems = item.rawItems;
-                    this.currentShortItems = this.calculateShortItems(this.currentRawItems);
-                    // 初期状態(全選択)に戻すかどうかは仕様次第だが、元データからの再編集という観点では全選択が自然
-                    this.checkedKeys = new Set(Object.keys(VN3_ITEMS));
-                    
-                    // UIの完全復元
-                    this.renderResultItems();
-                    this.updateOutput();
-                    
-                    // テキストエリアは通常表示に戻す（編集できないモード解除）
-                    outText.className = "hidden"; // renderResultItems内でhidden制御されるが念のため
-                    document.getElementById('result-meta').textContent = titleStr; // Stickyヘッダーの更新
-
-                } else {
-                    // テキストのみ復元モード (古い履歴データ)
-                    outText.value = item.content;
-                    
-                    // テキストエリアを表示・整形
-                    outText.classList.remove('hidden');
-                    outText.className = "w-full mt-2 p-2 border border-blue-100 rounded bg-white text-sm font-mono h-64 focus:ring-2 focus:ring-blue-300 focus:outline-none";
-                    
-                    // 個別項目は見えなくする
-                    document.getElementById('items-list').innerHTML = `
-                        <div class="p-8 text-center text-gray-400">
-                            <p>履歴からテキストのみを読み込みました。</p>
-                            <p class="text-xs mt-2">※ 元の解析データは保存されていないため、個別項目の再編集はできません。</p>
-                        </div>
-                    `;
-                }
+                // 全データ復元モード
+                this.currentRawItems = item.rawItems;
+                this.currentShortItems = this.calculateShortItems(this.currentRawItems);
+                // 初期状態(全選択)に戻すかどうかは仕様次第だが、元データからの再編集という観点では全選択が自然
+                this.checkedKeys = new Set(Object.keys(VN3_ITEMS));
+                
+                // UIの完全復元
+                this.renderResultItems();
+                this.updateOutput();
+                
+                // テキストエリアは通常表示に戻す（編集できないモード解除）
+                outText.className = "hidden"; // renderResultItems内でhidden制御されるが念のため
+                document.getElementById('result-meta').textContent = titleStr; // Stickyヘッダーの更新
 
                 // スクロール
                 document.getElementById('result-area').scrollIntoView({ behavior: 'smooth' });
