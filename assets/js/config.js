@@ -3,44 +3,44 @@
 // VN3ライセンスの各項目定義
 const VN3_ITEMS = {
     // A-B: 利用主体
-    'A': { label: 'A. 個人による利用', group: 'AB' },
-    'B': { label: 'B. 法人による利用', group: 'AB' },
+    'A': { label: 'A. 個人による利用', group: 'AB', outputLabel: 'ライセンス-個人利用' },
+    'B': { label: 'B. 法人による利用', group: 'AB', outputLabel: 'ライセンス-法人利用' },
     
     // C-E: オンラインサービスへのアップロード
-    'C': { label: 'C. ソーシャルコミュニケーションプラットフォームへの利用', group: 'CE' },
-    'D': { label: 'D. オンラインゲームプラットフォームへの利用', group: 'CE' },
-    'E': { label: 'E. コンテンツ共有プラットフォームへの利用', group: 'CE' },
+    'C': { label: 'C. ソーシャルコミュニケーションプラットフォームへの利用', group: 'CE', outputLabel: 'ライセンス-SNS利用' },
+    'D': { label: 'D. オンラインゲームプラットフォームへの利用', group: 'CE', outputLabel: 'ライセンス-オンラインゲーム利用' },
+    'E': { label: 'E. コンテンツ共有プラットフォームへの利用', group: 'CE', outputLabel: 'ライセンス-コンテンツ共有利用' },
     
     // F-H: センシティブな表現
-    'F': { label: 'F. 性的表現での利用', group: 'FH' },
-    'G': { label: 'G. 暴力を伴う表現での利用', group: 'FH' },
-    'H': { label: 'H. 政治活動・宗教活動での利用', group: 'FH' },
+    'F': { label: 'F. 性的表現での利用', group: 'FH', outputLabel: 'ライセンス-性的表現' },
+    'G': { label: 'G. 暴力を伴う表現での利用', group: 'FH', outputLabel: 'ライセンス-暴力表現' },
+    'H': { label: 'H. 政治活動・宗教活動での利用', group: 'FH', outputLabel: 'ライセンス-政治宗教' },
     
     // I-L: 加工
-    'I': { label: 'I. 加工・調整', group: 'IL' },
-    'J': { label: 'J. 改変', group: 'IL' },
-    'K': { label: 'K. 他のデータとの改変・結合', group: 'IL' },
-    'L': { label: 'L. 調整・改変の外部委託', group: 'IL' },
+    'I': { label: 'I. 加工・調整', group: 'IL', outputLabel: 'ライセンス-加工調整' },
+    'J': { label: 'J. 改変', group: 'IL', outputLabel: 'ライセンス-改変' },
+    'K': { label: 'K. 他のデータとの改変・結合', group: 'IL', outputLabel: 'ライセンス-改変結合' },
+    'L': { label: 'L. 調整・改変の外部委託', group: 'IL', outputLabel: 'ライセンス-調整委託' },
     
     // M-N: 再配布
-    'M': { label: 'M. 再配布', group: 'MN' },
-    'N': { label: 'N. 改変したデータの配布', group: 'MN' },
+    'M': { label: 'M. 再配布', group: 'MN', outputLabel: 'ライセンス-再配布' },
+    'N': { label: 'N. 改変したデータの配布', group: 'MN', outputLabel: 'ライセンス-改変配布' },
     
     // O-R: メディア・プロダクト利用
-    'O': { label: 'O. 映像作品・配信・放送への利用', group: 'OR' },
-    'P': { label: 'P. 出版物・電子出版物への利用', group: 'OR' },
-    'Q': { label: 'Q. 有体物（グッズ）への利用', group: 'OR' },
-    'R': { label: 'R. 製品開発等のためのソフトウェアへの組み込み', group: 'OR' },
+    'O': { label: 'O. 映像作品・配信・放送への利用', group: 'OR', outputLabel: 'ライセンス-映像配信' },
+    'P': { label: 'P. 出版物・電子出版物への利用', group: 'OR', outputLabel: 'ライセンス-出版' },
+    'Q': { label: 'Q. 有体物（グッズ）への利用', group: 'OR', outputLabel: 'ライセンス-グッズ' },
+    'R': { label: 'R. 製品開発等のためのソフトウェアへの組み込み', group: 'OR', outputLabel: 'ライセンス-ソフト組込' },
     
     // S-U: 二次創作
-    'S': { label: 'S. キャラクターや意匠を利用したアバターやモデルの作成', group: 'SU' },
-    'T': { label: 'T. コスプレ衣装の作成', group: 'SU' },
-    'U': { label: 'U. 既存のキャラクターや意匠を利用した二次的著作物の作成', group: 'SU' },
+    'S': { label: 'S. キャラクターや意匠を利用したアバターやモデルの作成', group: 'SU', outputLabel: 'ライセンス-アバター作成' },
+    'T': { label: 'T. コスプレ衣装の作成', group: 'SU', outputLabel: 'ライセンス-コスプレ' },
+    'U': { label: 'U. 既存のキャラクターや意匠を利用した二次的著作物の作成', group: 'SU', outputLabel: 'ライセンス-二次創作' },
     
     // その他
-    'V': { label: 'V. クレジット表記', group: 'V' },
-    'W': { label: 'W. 権利義務の譲渡等', group: 'W' },
-    'X': { label: 'X. 特記事項', group: 'X' }
+    'V': { label: 'V. クレジット表記', group: 'V', outputLabel: 'ライセンス-クレジット' },
+    'W': { label: 'W. 権利義務の譲渡等', group: 'W', outputLabel: 'ライセンス-権利譲渡' },
+    'X': { label: 'X. 特記事項', group: 'X', outputLabel: 'ライセンス-特記事項' }
 };
 
 // デフォルトの短縮表現マッピング
@@ -99,14 +99,14 @@ const DEFAULT_MAPPINGS = {
         { pattern: '私的かつ本人のみによる利用に限り許可します', short: '私的利用のみ' },
         { pattern: '作成を許可しません', short: '作成NG' },
         { pattern: '配布等（頒布、送信を含む）を許可しません', short: '配布NG' },
-        { pattern: '該当するデータではありません', short: '該当なし' },
+        { pattern: '該当するデータではありません', short: '該当なし' }
     ],
 
     // V: クレジット表記
     'V': [
         { pattern: '不要ですがあると嬉しいです', short: '不要(歓迎)' },
         { pattern: '必要です', short: '必要' },
-        { pattern: '不要です', short: '不要' },
+        { pattern: '不要です', short: '不要' }
     ],
     
     // W: 権利義務の譲渡等
@@ -115,16 +115,15 @@ const DEFAULT_MAPPINGS = {
 
 // 初期設定
 const DEFAULT_CONFIG = {
-    prefix: 'ライセンス-個人利用：',
     mappings: DEFAULT_MAPPINGS,
     // グループごとの統合設定（trueなら統合して表示）
     groups: {
-        'AB': true,
-        'CE': true,
-        'FH': true,
-        'IL': true,
-        'MN': true,
-        'OR': true,
-        'SU': true
+        'AB': false,
+        'CE': false,
+        'FH': false,
+        'IL': false,
+        'MN': false,
+        'OR': false,
+        'SU': false
     }
 };

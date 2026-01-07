@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VN3 License Summary Customizer</title>
+    <title>LicenseToTags</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
@@ -29,26 +29,24 @@
 
     <div class="container mx-auto px-4 py-8 max-w-5xl">
         <header class="mb-8 text-center">
-            <h1 class="text-3xl font-bold text-slate-800 mb-2">VN3 License Summary Customizer</h1>
+            <h1 class="text-3xl font-bold text-slate-800 mb-2">LicenseToTags</h1>
             <p class="text-slate-600">VN3ライセンスPDFを解析し、設定した短縮表現タグを生成します</p>
         </header>
 
-        <main class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <!-- 左カラム: 解析・設定 -->
-            <div class="md:col-span-2 space-y-6">
+        <main class="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+            <!-- 左カラム: 入力・設定・履歴 -->
+            <div class="md:col-span-4 space-y-6">
                 
                 <!-- ファイルアップロード -->
-                <div id="drop-zone" class="bg-white p-8 rounded-lg shadow-md border-2 border-dashed border-gray-300 flex flex-col items-center justify-center transition-colors cursor-pointer hover:border-primary hover:bg-blue-50">
-                    <svg class="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                    <p class="text-lg font-medium text-gray-700">PDFファイルをドラッグ＆ドロップ</p>
-                    <p class="text-sm text-gray-500 mt-1">またはクリックしてファイルを選択</p>
+                <div id="drop-zone" class="bg-white p-6 rounded-lg shadow-md border-2 border-dashed border-gray-300 flex flex-col items-center justify-center transition-colors cursor-pointer hover:border-primary hover:bg-blue-50">
+                    <svg class="w-10 h-10 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                    <p class="text-base font-medium text-gray-700">PDFをドラッグ＆ドロップ</p>
                     <input type="file" id="file-input" accept=".pdf" class="hidden">
                     
-                    <div class="w-full mt-6 border-t pt-4">
-                        <p class="text-sm text-gray-500 mb-2 text-center">- または URLから読み込み (Google Drive対応) -</p>
+                    <div class="w-full mt-4 border-t pt-3">
                         <div class="flex gap-2" onclick="event.stopPropagation()">
-                            <input type="text" id="url-input" class="flex-1 p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="https://drive.google.com/file/d/...">
-                            <button id="fetch-url-btn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm font-bold transition">
+                            <input type="text" id="url-input" class="w-full p-2 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="Google Drive URL...">
+                            <button id="fetch-url-btn" class="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-bold transition whitespace-nowrap">
                                 取得
                             </button>
                         </div>
@@ -56,83 +54,79 @@
                 </div>
 
                 <!-- 生成オプション -->
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold text-slate-700">生成オプション</h2>
-                        <button id="open-settings-btn" class="text-sm text-primary hover:text-blue-700 underline">詳細設定・マッピング編集</button>
+                <div class="bg-white p-5 rounded-lg shadow-md">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-bold text-slate-700">設定</h2>
+                        <button id="open-settings-btn" class="text-xs text-primary hover:text-blue-700 underline">マッピング編集</button>
                     </div>
                     
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">冒頭タグ（Prefix）</label>
-                            <input type="text" id="prefix-input" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="例：ライセンス-個人利用：" value="ライセンス-個人利用：">
-                        </div>
+                    <div class="space-y-3">
+                        <!-- Prefix Removed -->
 
                         <div>
-                            <span class="block text-sm font-medium text-gray-700 mb-2">項目の統合</span>
-                            <div class="flex flex-wrap gap-3">
-                                <label class="inline-flex items-center">
-                                    <input type="checkbox" class="form-checkbox text-primary" data-group="AB" checked>
-                                    <span class="ml-2">A-B (利用主体)</span>
-                                </label>
-                                <label class="inline-flex items-center">
-                                    <input type="checkbox" class="form-checkbox text-primary" data-group="CE" checked>
-                                    <span class="ml-2">C-E (アップロード)</span>
-                                </label>
-                                <label class="inline-flex items-center">
-                                    <input type="checkbox" class="form-checkbox text-primary" data-group="FH" checked>
-                                    <span class="ml-2">F-H (センシティブ)</span>
-                                </label>
-                                <label class="inline-flex items-center">
-                                    <input type="checkbox" class="form-checkbox text-primary" data-group="IL">
-                                    <span class="ml-2">I-L (加工)</span>
-                                </label>
-                                <label class="inline-flex items-center">
-                                    <input type="checkbox" class="form-checkbox text-primary" data-group="MN">
-                                    <span class="ml-2">M-N (再配布)</span>
-                                </label>
-                                <label class="inline-flex items-center">
-                                    <input type="checkbox" class="form-checkbox text-primary" data-group="OR">
-                                    <span class="ml-2">O-R (メディア)</span>
-                                </label>
-                                <label class="inline-flex items-center">
-                                    <input type="checkbox" class="form-checkbox text-primary" data-group="SU">
-                                    <span class="ml-2">S-U (二次創作)</span>
-                                </label>
+                            <span class="block text-xs font-medium text-gray-700 mb-2">項目の統合</span>
+                            <div class="grid grid-cols-2 gap-2 text-sm">
+                                <label class="inline-flex items-center"><input type="checkbox" class="form-checkbox text-primary h-4 w-4" data-group="AB"><span class="ml-2 text-xs">A-B 利用主体</span></label>
+                                <label class="inline-flex items-center"><input type="checkbox" class="form-checkbox text-primary h-4 w-4" data-group="CE"><span class="ml-2 text-xs">C-E アップロード</span></label>
+                                <label class="inline-flex items-center"><input type="checkbox" class="form-checkbox text-primary h-4 w-4" data-group="FH"><span class="ml-2 text-xs">F-H センシティブ</span></label>
+                                <label class="inline-flex items-center"><input type="checkbox" class="form-checkbox text-primary h-4 w-4" data-group="IL"><span class="ml-2 text-xs">I-L 加工</span></label>
+                                <label class="inline-flex items-center"><input type="checkbox" class="form-checkbox text-primary h-4 w-4" data-group="MN"><span class="ml-2 text-xs">M-N 再配布</span></label>
+                                <label class="inline-flex items-center"><input type="checkbox" class="form-checkbox text-primary h-4 w-4" data-group="OR"><span class="ml-2 text-xs">O-R メディア</span></label>
+                                <label class="inline-flex items-center"><input type="checkbox" class="form-checkbox text-primary h-4 w-4" data-group="SU"><span class="ml-2 text-xs">S-U 二次創作</span></label>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 結果出力エリア -->
-                <div id="result-area" class="bg-white p-6 rounded-lg shadow-md hidden">
-                    <div class="flex justify-between items-center mb-2">
-                        <h2 class="text-xl font-bold text-slate-700">解析結果</h2>
-                        <div class="text-sm text-gray-500" id="result-meta"></div>
+                <!-- 履歴 -->
+                <div class="bg-white p-5 rounded-lg shadow-md">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-bold text-slate-700">履歴</h2>
+                        <button id="clear-history-btn" class="text-xs text-red-500 hover:text-red-700">全消去</button>
                     </div>
-                    <textarea id="output-text" class="w-full h-48 p-3 bg-gray-50 border border-gray-300 rounded mb-4 font-mono text-sm" readonly></textarea>
-                    <div class="flex gap-4">
-                        <button id="copy-btn" class="flex-1 bg-primary hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition">
-                            クリップボードにコピー
-                        </button>
-                        <button id="save-history-btn" class="bg-secondary hover:bg-slate-600 text-white font-bold py-2 px-4 rounded transition">
-                            履歴に保存
-                        </button>
+                    <div id="history-list" class="space-y-2 overflow-y-auto max-h-[300px]">
+                        <p class="text-center text-gray-400 py-4 text-xs">履歴はありません</p>
                     </div>
                 </div>
             </div>
 
-            <!-- 右カラム: 履歴 -->
-            <div class="md:col-span-1">
-                <div class="bg-white p-6 rounded-lg shadow-md h-full">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold text-slate-700">過去の履歴</h2>
-                        <button id="clear-history-btn" class="text-xs text-red-500 hover:text-red-700">全消去</button>
+            <!-- 右カラム: 解析結果 -->
+            <div class="md:col-span-8">
+                <div id="result-area" class="space-y-6">
+                    
+                    <!-- ファイル情報表示エリア -->
+                    <div id="file-info-area" class="bg-white p-4 rounded-lg shadow-md border-l-4 border-primary hidden">
+                        <h2 id="file-title" class="text-xl font-bold text-gray-800 mb-1">利用規約タイトル未取得</h2>
+                        <p id="file-rights" class="text-sm text-gray-600">権利者：不明</p>
                     </div>
-                    <div id="history-list" class="space-y-3 overflow-y-auto max-h-[600px]">
-                        <!-- 履歴アイテムがここに挿入されます -->
-                        <p class="text-center text-gray-400 py-4 text-sm">履歴はありません</p>
+
+                    <!-- 生成テキスト (Sticky) -->
+                    <div class="bg-blue-50 px-5 py-3 rounded-lg shadow-lg border border-blue-200 sticky top-4 z-10">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h2 class="text-base font-bold text-blue-900">生成タグ</h2>
+                                <p class="text-xs text-blue-600" id="result-meta"></p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button id="copy-btn" class="bg-primary hover:bg-blue-600 text-white font-bold py-1 px-4 rounded text-sm transition shadow-sm">
+                                    コピー
+                                </button>
+                            </div>
+                        </div>
+                        <textarea id="output-text" class="hidden" readonly></textarea>
                     </div>
+
+                    <!-- 個別項目リスト -->
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                        <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                            <h3 class="font-bold text-slate-700">個別項目確認</h3>
+                            <button id="select-all-btn" class="text-xs text-primary underline">全て選択/解除</button>
+                        </div>
+                        <div id="items-list" class="divide-y divide-gray-100">
+                            <!-- JSでリスト生成 -->
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </main>

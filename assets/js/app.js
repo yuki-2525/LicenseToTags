@@ -2,13 +2,26 @@
 
 class App {
     constructor() {
+        this.debugMode = false; // デバッグモード初期値
         this.config = this.loadConfig();
         this.parser = new PdfParser();
         this.history = this.loadHistory();
         
+        // 状態管理用
+        this.currentRawItems = {};
+        this.currentShortItems = {};
+        this.checkedKeys = new Set(Object.keys(VN3_ITEMS));
+        // 各項目のカスタム出力ラベル（初期値はconfigから）
+        this.customLabels = {};
+        Object.keys(VN3_ITEMS).forEach(k => {
+            this.customLabels[k] = VN3_ITEMS[k].outputLabel;
+        });
+        
         this.initializeUI();
         this.renderHistory();
         this.renderMappingEditor();
+        this.renderResultItems(); // 初期表示
+        this.updateOutput();
     }
 
     // --- 設定管理 ---
@@ -26,8 +39,7 @@ class App {
         this.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
         this.saveConfig();
         this.renderMappingEditor();
-        // UI反映（Prefixなど）
-        document.getElementById('prefix-input').value = this.config.prefix;
+        // UI反映
         this.updateGroupCheckboxes();
     }
 
@@ -56,107 +68,114 @@ class App {
 
     /**
      * PDF解析結果(rawItems)を元に、設定(mappings)に従って短縮表現テキストを生成
+     * ※ UI表示用ではなく、データセットアップ用のメソッドに変更
      */
-    generateSummary(rawItems) {
-        const resultItems = {}; // { 'A': 'OK', 'B': 'NG', ... }
+    calculateShortItems(rawItems) {
+        const shortItems = {};
         
-        // 1. 各項目のテキストを解析し、マッピングに当てはめる
         for (const key of Object.keys(VN3_ITEMS)) {
             const text = rawItems[key];
             if (!text) {
-                resultItems[key] = '（不明）';
+                shortItems[key] = { value: '（不明）', raw: '' };
                 continue;
             }
 
             // マッピングルール検索
-            // グループ固有のマッピングがあれば優先、なければ共通(common)、なければデフォルトロジック
             const group = VN3_ITEMS[key].group;
-            
-            // グループ固有マッピング
             let shortText = null;
+            
+            // グループ固有
             if (this.config.mappings[group]) {
                 shortText = this.findMatch(text, this.config.mappings[group]);
             }
-            
-            // 共通マッピング
+            // 共通
             if (!shortText && this.config.mappings['common']) {
                 shortText = this.findMatch(text, this.config.mappings['common']);
             }
-            
-            // ヒットしなければ原文の一部を切り出すか、そのまま（長すぎる場合はカット）
+            // フォールバック
             if (!shortText) {
-                // フォールバック: テキストから意味ありげな文言を探す...のは難しいので
-                // 仮に「要確認」とするか、テキストの先頭を表示
-                shortText = text.length > 20 ? text.substring(0, 20) + '...' : text;
+                // 特記事項(X)の特別処理: 「なし」以外なら「あり 要確認」とする
+                if (key === 'X') {
+                    const nonePatterns = ['なし', '特になし', '無し', 'なし。', '特になし。'];
+                    if (!nonePatterns.includes(text)) {
+                        shortText = 'あり 要確認';
+                    } else {
+                        shortText = text;
+                    }
+                } else {
+                    shortText = text.length > 20 ? text.substring(0, 20) + '...' : text;
+                }
             }
 
-            resultItems[key] = shortText;
+            shortItems[key] = { 
+                value: shortText, 
+                raw: text 
+            };
         }
+        return shortItems;
+    }
 
-        // 2. グループ化設定に従って結合
+    /**
+     * UIの状態(checkedKeys)とshortItemsを元に、最終出力テキストを作成
+     */
+    buildOutputText() {
+        if (!this.currentShortItems || Object.keys(this.currentShortItems).length === 0) return '';
+
         const summaryLines = [];
-        
-        // 処理済みキー管理
         const processedKeys = new Set();
-
         const itemKeys = Object.keys(VN3_ITEMS);
-        
+
         for (const key of itemKeys) {
+            // チェックされていない項目はスキップ
+            if (!this.checkedKeys.has(key)) continue;
             if (processedKeys.has(key)) continue;
 
             const group = VN3_ITEMS[key].group;
             const groupKeys = itemKeys.filter(k => VN3_ITEMS[k].group === group);
             
-            // このグループが「統合する」設定になっているか？
+            // グループ内の有効なキーだけフィルタリング
+            const activeGroupKeys = groupKeys.filter(k => this.checkedKeys.has(k));
+            
+            // グループ統合チェックかつ、グループ内に有効な項目が複数あるか？
+            // (1つだけなら個別処理と同じ扱いになるが、ロジック的には統合ルートでも問題ない)
             const shouldMerge = this.config.groups[group];
 
-            if (shouldMerge && groupKeys.length > 1) {
-                // 統合処理 (例: A-B)
-                // 全て同じ値なら1つにまとめる、違うなら列挙する
-                const values = groupKeys.map(k => resultItems[k]);
+            if (shouldMerge && activeGroupKeys.length > 0) {
+                // 統合処理
+                const values = activeGroupKeys.map(k => this.currentShortItems[k].value);
                 const isAllSame = values.every(v => v === values[0]);
                 
                 let lineText = '';
-                const label = this.getGroupLabel(group) || `${groupKeys[0]}-${groupKeys[groupKeys.length-1]}`;
+                const label = this.getGroupLabel(group) || group;
 
-                if (isAllSame) {
+                if (isAllSame && values.length > 0) {
+                    // 全て同じ値ならシンプルに
                     lineText = `${label}：${values[0]}`;
                 } else {
-                    // 違う場合: A:OK / B:NG のように並べるか、単純に列挙
-                    // VN3ライセンスの各項目名を短縮して表示
-                    const details = groupKeys.map((k, index) => {
-                         // A, B, ... のキーを表示に使うのは直感的でない場合があるので、
-                         // 項目定義から簡易ラベルを取得したいが、ここでは簡易的にキー+値にする
-                         // または、config.jsにshortLabelを持たせるなどの拡張も考えられる
-                         
-                         // 例: "個人OK/法人NG" のようにしたい
-                         // VN3_ITEMSにshort属性を追加して対応するのがベストだが、
-                         // ここではキー(A,B...)を使って "A(個人):OK" のようにするか
-                         // ユーザーは簡潔さを求めているので "A:OK / B:NG" とする
+                    // 違う値が含まれる場合
+                     const details = activeGroupKeys.map((k, index) => {
+                         // A, B キーを表示に使う
                          return `${k}:${values[index]}`;
                     });
-                    
-                    lineText = `${label}：${details.join(' ')}`; // スペース区切りに変更 (スラッシュ多用を避ける)
+                    lineText = `${label}：${details.join(' ')}`;
                 }
                 summaryLines.push(lineText);
                 
-                // グループ内のキーをすべて処理済みにする
+                // このグループのすべてのキーを処理済みにする（activeでないものも含めてスキップ対象にする）
                 groupKeys.forEach(k => processedKeys.add(k));
 
-            } else {
+            } else if (this.checkedKeys.has(key)) {
                 // 個別出力
-                // ラベルは項目定義から取得
-                const def = VN3_ITEMS[key];
-                // 少しラベルが長いので、記号 + 簡易名に加工してもいいかも
-                // 例: "A. 個人による利用" -> "A" とか "個人利用"
-                // ここではシンプルに定義ラベルを使うか、キーを使う
-                summaryLines.push(`${key}：${resultItems[key]}`);
+                const val = this.currentShortItems[key].value;
+                const label = this.customLabels[key] || VN3_ITEMS[key].outputLabel; // カスタムラベル使用
+                summaryLines.push(`${label}：${val}`);
                 processedKeys.add(key);
             }
         }
 
-        return this.config.prefix + ' ' + summaryLines.join(' / ');
+        return summaryLines.join('\n');
     }
+
 
     findMatch(text, mappingList) {
         for (const rule of mappingList) {
@@ -168,20 +187,106 @@ class App {
     }
 
     getGroupLabel(groupKey) {
-        // グループラベルの定義（簡易）
+        // グループラベルの定義
+        // ここも「ライセンス-xxx」に合わせる
         const groupLabels = {
-            'AB': '利用主体',
-            'CE': 'アップロード',
-            'FH': 'センシティブ',
-            'IL': '加工',
-            'MN': '再配布',
-            'OR': 'メディア',
-            'SU': '二次創作',
-            'V': 'クレジット',
-            'W': '権利譲渡',
-            'X': '特記'
+            'AB': 'ライセンス-利用主体',
+            'CE': 'ライセンス-アップロード',
+            'FH': 'ライセンス-センシティブ',
+            'IL': 'ライセンス-加工',
+            'MN': 'ライセンス-再配布',
+            'OR': 'ライセンス-メディア',
+            'SU': 'ライセンス-二次創作',
+            'V': 'ライセンス-クレジット',
+            'W': 'ライセンス-権利譲渡',
+            'X': 'ライセンス-特記'
         };
         return groupLabels[groupKey];
+    }
+
+    // --- UI レンダリング ---
+
+    renderResultItems() {
+        const container = document.getElementById('items-list');
+        container.innerHTML = '';
+
+        Object.keys(VN3_ITEMS).forEach(key => {
+            const itemDef = VN3_ITEMS[key];
+            const result = this.currentShortItems[key] || { value: '未解析', raw: '' };
+            const isChecked = this.checkedKeys.has(key);
+            const currentLabel = this.customLabels[key] || itemDef.outputLabel;
+
+            const row = document.createElement('div');
+            row.className = 'p-3 hover:bg-blue-50 transition flex items-start group';
+            
+            row.innerHTML = `
+                <div class="flex items-center h-5 mt-2">
+                    <input type="checkbox" data-key="${key}" class="item-checkbox form-checkbox h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary" ${isChecked ? 'checked' : ''}>
+                </div>
+                <div class="ml-3 flex-1">
+                    <div class="flex flex-col md:flex-row md:items-center gap-2 mb-1">
+                        <span class="text-xs text-gray-400 font-mono w-4">${key}</span>
+                        <!-- 編集可能なラベル -->
+                        <input type="text" class="label-input text-sm font-bold text-gray-700 border-b border-transparent hover:border-gray-300 focus:border-primary focus:outline-none bg-transparent w-full md:w-auto md:min-w-[150px]" 
+                               value="${currentLabel}" data-key="${key}">
+                        
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 whitespace-nowrap">
+                            ${result.value}
+                        </span>
+                    </div>
+                    <div class="text-xs text-gray-500 pl-6">
+                        <span class="text-gray-400 text-[10px] block">${itemDef.label}</span>
+                        <p class="mt-1 line-clamp-2 hover:line-clamp-none transition-all cursor-help" title="${(result.raw || '').replace(/"/g, '&quot;')}">
+                            ${result.raw || '（原文なし）'}
+                        </p>
+                    </div>
+                </div>
+            `;
+            
+            // チェックボックスイベント
+            row.querySelector('.item-checkbox').addEventListener('change', (e) => {
+                if(e.target.checked) {
+                    this.checkedKeys.add(key);
+                } else {
+                    this.checkedKeys.delete(key);
+                }
+                this.updateOutput();
+            });
+
+            // ラベル編集イベント
+            row.querySelector('.label-input').addEventListener('input', (e) => {
+                const newLabel = e.target.value;
+                this.customLabels[key] = newLabel;
+                this.updateOutput();
+            });
+
+            container.appendChild(row);
+        });
+
+
+        // 「全て選択/解除」機能
+        const selectAllBtn = document.getElementById('select-all-btn');
+        // イベント重複防止のためcloneして置換
+        const newBtn = selectAllBtn.cloneNode(true);
+        selectAllBtn.parentNode.replaceChild(newBtn, selectAllBtn);
+        
+        newBtn.addEventListener('click', () => {
+            const allKeys = Object.keys(VN3_ITEMS);
+            if (this.checkedKeys.size === allKeys.length) {
+                // 全解除
+                this.checkedKeys.clear();
+            } else {
+                // 全選択
+                this.checkedKeys = new Set(allKeys);
+            }
+            this.renderResultItems(); // 再描画してチェック状態反映
+            this.updateOutput();
+        });
+    }
+
+    updateOutput() {
+        const text = this.buildOutputText();
+        document.getElementById('output-text').value = text;
     }
 
     // --- UI 操作 ---
@@ -208,23 +313,48 @@ class App {
         });
 
         // URL Fetch Button
-        document.getElementById('fetch-url-btn').addEventListener('click', () => {
+        const fetchBtn = document.getElementById('fetch-url-btn');
+        fetchBtn.addEventListener('click', () => {
             const url = document.getElementById('url-input').value;
             if (url) {
                 this.handleUrl(url);
             }
         });
+
+        // デバッグモード切替 (右クリック)
+        fetchBtn.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            this.debugMode = !this.debugMode;
+            
+            // UIフィードバック
+            const originalText = fetchBtn.getAttribute('data-original-text') || '取得';
+            // クラス操作による視覚フィードバック
+            if(this.debugMode) {
+                fetchBtn.textContent = 'Debug ON';
+                fetchBtn.classList.remove('bg-primary', 'hover:bg-primary-dark');
+                fetchBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+            } else {
+                fetchBtn.textContent = 'Debug OFF';
+                fetchBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                fetchBtn.classList.add('bg-gray-500'); // 一時的にグレーに
+            }
+
+            // 1.5秒後に元に戻す
+            setTimeout(() => {
+                // テキストを戻す（ロード中などの状態でない場合のみ）
+                if(!fetchBtn.disabled) {
+                    fetchBtn.textContent = originalText;
+                }
+                // アニメーション的にクラスを元に戻す
+                fetchBtn.classList.remove('bg-red-600', 'hover:bg-red-700', 'bg-gray-500');
+                fetchBtn.classList.add('bg-primary', 'hover:bg-primary-dark');
+            }, 1500);
+            
+            console.log(`Debug Mode changed to: ${this.debugMode}`);
+        });
         
         // Prevent dropzone click when clicking input
         document.getElementById('url-input').addEventListener('click', (e) => e.stopPropagation());
-
-        // Prefix Input
-        const prefixInput = document.getElementById('prefix-input');
-        prefixInput.value = this.config.prefix;
-        prefixInput.addEventListener('change', (e) => {
-            this.config.prefix = e.target.value;
-            this.saveConfig();
-        });
 
         // Group Settings (Checkboxes)
         const checkboxes = document.querySelectorAll('input[data-group]');
@@ -234,6 +364,7 @@ class App {
             cb.addEventListener('change', (e) => {
                 this.config.groups[group] = e.target.checked;
                 this.saveConfig();
+                this.updateOutput(); // 再生成
             });
         });
 
@@ -242,22 +373,26 @@ class App {
             const text = document.getElementById('output-text').value;
             if (text) {
                 navigator.clipboard.writeText(text).then(() => {
-                    alert('コピーしました！');
-                });
-            }
-        });
+                    // 自動保存
+                    // 現在表示中のタイトルと権利者を取得
+                    const currentTitle = document.getElementById('file-title').textContent || '利用規約';
+                    const currentRights = document.getElementById('file-rights').textContent || '権利者：不明';
+                    // "権利者："の接頭辞を除去して保存するか、そのまま表示用として保存するか
+                    // 要望は「履歴には"○○利用規約"と"権利者：××"を表示する」なので、そのまま保存したほうが楽
 
-        // Save History Button
-        document.getElementById('save-history-btn').addEventListener('click', () => {
-            const text = document.getElementById('output-text').value;
-            const meta = document.getElementById('result-meta').textContent;
-            if (text) {
-                this.addHistory({
-                    date: new Date().toLocaleString(),
-                    content: text,
-                    meta: meta
+                    this.addHistory({
+                        date: new Date().toLocaleString(),
+                        content: text,
+                        title: currentTitle,
+                        rights: currentRights
+                    });
+
+                    // ボタンの見た目を変える
+                    const btn = document.getElementById('copy-btn');
+                    const originalText = btn.textContent;
+                    btn.textContent = 'コピー＆保存完了!';
+                    setTimeout(() => btn.textContent = originalText, 2000);
                 });
-                alert('履歴に保存しました');
             }
         });
 
@@ -279,44 +414,79 @@ class App {
             this.saveMappingsFromEditor();
             this.saveConfig();
             modal.classList.add('hidden');
+            
+            // 再計算と再描画
+            this.currentShortItems = this.calculateShortItems(this.currentRawItems);
+            this.renderResultItems();
+            this.updateOutput();
+
             alert('設定を保存しました');
-        });
-        document.getElementById('reset-settings-btn').addEventListener('click', () => {
-            if(confirm('設定を初期値に戻しますか？')) {
-                this.resetConfig();
-            }
         });
     }
 
-    async handleFile(file) {
-        if (!file || file.type !== 'application/pdf') {
-            alert('PDFファイルを選択してください');
-            return;
-        }
+    handleFile(file) {
+        if (!file) return;
+        
+        // ローディング表示
+        document.body.style.cursor = 'wait';
+        
+        // async/awaitを使うため、ここを即時関数でラップするか、メソッド自体をasyncのまま修正済みとする
+        // 以前の修正で async handleFile になっている前提
+        this.processFile(file);
+    }
 
+    async processFile(file) {
         try {
-             // UI Loading state
-            document.body.style.cursor = 'wait';
-            
-            // ローディング表示とか入れたほうが親切だが省略
             const result = await this.parser.parse(file);
             
-            // 解析結果を生成
-            const summary = this.generateSummary(result.rawItems);
+            // データ保存
+            this.currentRawItems = result.rawItems;
+            this.currentShortItems = this.calculateShortItems(result.rawItems);
+            // 初期状態は全選択
+            this.checkedKeys = new Set(Object.keys(VN3_ITEMS));
             
-            // 結果表示
-            document.getElementById('result-area').classList.remove('hidden');
-            document.getElementById('output-text').value = summary;
-            document.getElementById('result-meta').textContent = `権利者: ${result.rightsHolder} (${new Date().toLocaleString()})`;
+            // タイトルと権利者情報をUIに反映
+            const title = result.title || '（タイトル不明）';
+            const rights = result.rightsHolder || '（権利者不明）';
+            
+            const fileInfoArea = document.getElementById('file-info-area');
+            const fileTitle = document.getElementById('file-title');
+            const fileRights = document.getElementById('file-rights');
+            
+            fileInfoArea.classList.remove('hidden');
+            fileTitle.textContent = title;
+            fileTitle.dataset.fullTitle = title; // データ属性に保持
+            fileRights.textContent = `権利者：${rights}`;
+            fileRights.dataset.fullRights = rights;
+
+            // UIレンダリング
+            document.getElementById('result-area').classList.remove('hidden'); 
+            
+            // meta表示用（一応残す）
+            document.getElementById('result-meta').textContent = `${title}`;
+            
+            this.renderResultItems();
+            this.updateOutput();
 
         } catch (error) {
             alert(error.message);
+            console.error(error);
         } finally {
             document.body.style.cursor = 'default';
         }
     }
 
+
     async handleUrl(url) {
+        // デバッグ出力用ヘルパー
+        const debug = (...args) => this.debugMode && console.log(...args);
+        const debugGroup = (...args) => this.debugMode && console.group(...args);
+        const debugGroupEnd = () => this.debugMode && console.groupEnd();
+        const debugError = (...args) => this.debugMode && console.error(...args);
+
+        debugGroup('URL Fetch Debug Info');
+        debug('Input URL:', url);
+
         // Google Drive URLの変換ロジック
         // https://drive.google.com/file/d/1n8n3_.../view?usp=sharing
         // -> ID: 1n8n3_...
@@ -329,22 +499,37 @@ class App {
             const fileId = driveMatch[1];
             targetUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
             isGoogleDrive = true;
+            debug('Detected Google Drive URL. Converted to:', targetUrl);
+        } else {
+            debug('Using URL as is:', targetUrl);
         }
 
-        // CORS回避のためプロキシ経由 (AllOriginsを使用)
+        // CORS回避のためプロキシ経由 (corsproxy.ioを使用)
         // 注意: 外部サービス依存のため、永続性が必要な場合は自前プロキシを推奨
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+        // const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+        debug('Proxy URL:', proxyUrl);
 
         try {
             document.getElementById('fetch-url-btn').textContent = '取得中...';
             document.getElementById('fetch-url-btn').disabled = true;
 
             const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error('ファイルの取得に失敗しました。URLを確認してください。');
+            debug('Response Status:', response.status);
+            if (this.debugMode) console.log('Response Headers:', [...response.headers.entries()]);
+
+            if (!response.ok) throw new Error(`ファイルの取得に失敗しました。Status: ${response.status}`);
             
             const blob = await response.blob();
+            debug('Fetched Blob:', blob);
+            debug('Blob Type:', blob.type);
+            debug('Blob Size:', blob.size);
+
             // Google Driveの場合、HTMLが返ってくることがある（アクセス権限なしなど）
             if (blob.type.includes('text/html')) {
+                const textPreview = await blob.text(); // for debug preview
+                if (this.debugMode) console.warn('Response was HTML. Preview:', textPreview.substring(0, 200));
+                // バイナリとして扱い直すのは難しいのでエラーにする
                 throw new Error('PDFとして読み込めませんでした。Google Driveのアクセス権限（リンクを知っている全員）を確認してください。');
             }
 
@@ -352,10 +537,12 @@ class App {
             this.handleFile(file);
 
         } catch (error) {
+            debugError('Fetch Error Detail:', error);
             alert(`URLからの読み込みエラー: ${error.message}`);
         } finally {
             document.getElementById('fetch-url-btn').textContent = '取得';
             document.getElementById('fetch-url-btn').disabled = false;
+            debugGroupEnd();
         }
     }
 
@@ -370,19 +557,31 @@ class App {
 
         this.history.forEach(item => {
             const div = document.createElement('div');
-            div.className = 'p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition cursor-pointer';
+            div.className = 'p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition cursor-pointer text-xs';
+            
+            // 旧データ互換: metaがある場合はそれを使い、なければtitle/rightsを使う
+            const titleStr = item.title || item.meta || '利用規約';
+            const rightsStr = item.rights || '';
+
             div.innerHTML = `
-                <div class="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>${item.date}</span>
-                    <span>${item.meta || ''}</span>
+                <div class="mb-1">
+                    <div class="font-bold text-gray-700 truncate">${titleStr}</div>
+                    <div class="flex justify-between text-gray-400 mt-1">
+                        <span>${rightsStr}</span>
+                        <span>${(item.date || '').split(' ')[0]}</span>
+                    </div>
                 </div>
-                <div class="text-sm text-gray-700 truncate font-mono">${item.content}</div>
+                <div class="text-gray-500 truncate font-mono bg-white p-1 rounded border border-gray-100">${item.content}</div>
             `;
             // クリックで復元
             div.addEventListener('click', () => {
                 document.getElementById('result-area').classList.remove('hidden');
                 document.getElementById('output-text').value = item.content;
-                document.getElementById('result-meta').textContent = item.meta || '';
+                
+                // タイトル等も復元（現在ファイル情報とは乖離するが、何を見ていたかわかるように）
+                document.getElementById('file-info-area').classList.remove('hidden');
+                document.getElementById('file-title').textContent = titleStr;
+                document.getElementById('file-rights').textContent = rightsStr;
             });
             list.appendChild(div);
         });
