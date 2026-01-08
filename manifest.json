@@ -1,0 +1,16 @@
+{
+  "name": "LicenseToTags",
+  "short_name": "L2T",
+  "description": "VN3ライセンスPDFを解析し、整形済みの利用規約タグを生成するツール",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "assets/img/License2Tags.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
